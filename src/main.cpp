@@ -1,6 +1,7 @@
 #include "../include/state.hpp"
 #include "../include/http.hpp"
 
+
 #include <iostream>
 #include <string>
 #include <sstream>
@@ -96,6 +97,7 @@ void handle_client(int client_fd)
         std::string teamStr = get_query_param(req.query, "team");
         std::string actStr = get_query_param(req.query, "action");
         std::string mapStr = get_query_param(req.query, "map");
+        std::string token = get_query_param(req.query, "token");
 
         if (id.empty() || teamStr.empty() || actStr.empty() || mapStr.empty())
         {
@@ -124,22 +126,128 @@ void handle_client(int client_fd)
             if (!m)
             {
                 resp = make_http_response("Match not found\n", "text/plain", 404, "Not Found");
-            } else {
-            
-                bool ok = apply_action(*m, team, at, mapId);
-                if (!ok)
+            }
+            else
+            {
+                if (team < 0 || team > 1)
                 {
-                    resp = make_http_response("Invalid action\n", "text/plain", 400, "Bad Request");
+                    resp = make_http_response("Invalid team index\n", "text/plain", 400, "Bad Request");
+                }
+                else if (m->teamCaptainTokens[team].empty() || token.empty() || token != m->teamCaptainTokens[team])
+                {
+                    resp = make_http_response("Not authorized to be join this team.\n", "text/plain", 403, "Forbidden");
                 }
                 else
                 {
-                    std::string body = match_to_json(*m);
-                    resp = make_http_response(body, "application/json");
+                    bool ok = apply_action(*m, team, at, mapId);
+                    if (!ok)
+                    {
+                        resp = make_http_response("Invalid action\n", "text/plain", 400, "Bad Request");
+                    }
+                    else
+                    {
+                        std::string body = match_to_json(*m);
+                        resp = make_http_response(body, "application/json");
+                    }
                 }
             }
         }
     }
-    else { 
+    else if (req.method == "GET" && req.path == "/match/join")
+    {
+        std::string id = get_query_param(req.query, "id");
+        std::string teamStr = get_query_param(req.query, "team"); // "0", "1", or "spectator"
+        std::string token = get_query_param(req.query, "token");  // optional existing token
+
+
+        std::lock_guard<std::mutex> lock(g_mutex);
+        Match *m = get_match(id);
+        if (!m)
+        {
+            resp = make_http_response("Match not found\n", "text/plain", 404, "Not Found");
+        }
+        else
+        {
+            std::string role = "spectator";
+            int teamIndex = -1;
+            std::string outToken;
+
+
+            if (teamStr == "spectator")
+            {
+                // spectator: always allowed, no token needed
+                role = "spectator";
+            }
+            else
+            {
+                // try to parse team index 0 or 1
+                try
+                {
+                    teamIndex = std::stoi(teamStr);
+                }
+                catch (...)
+                {
+                    teamIndex = -1;
+                }
+
+
+                if (teamIndex < 0 || teamIndex > 1)
+                {
+                    resp = make_http_response("Invalid team index\n", "text/plain", 400, "Bad Request");
+                    send(client_fd, resp.c_str(), resp.size(), 0);
+                    close(client_fd);
+                    return;
+                }
+
+
+                std::string &currentToken = m->teamCaptainTokens[teamIndex];
+                if (currentToken.empty())
+                {
+                    // no captain yet: claim captain for this team
+                    currentToken = generate_token_for_captain();
+                    outToken = currentToken;
+                    role = "captain";
+                }
+                else
+                {
+                    // captain already exists
+                    if (!token.empty() && token == currentToken)
+                    {
+                        // same client rejoining
+                        outToken = currentToken;
+                        role = "captain";
+                    }
+                    else
+                    {
+                        // someone else trying to join as captain -> spectator
+                        role = "spectator";
+                    }
+                }
+            }
+
+
+            std::ostringstream body;
+            body << "{";
+            body << "\"matchId\":\"" << m->id << "\",";
+            body << "\"role\":\"" << role << "\"";
+            if (teamIndex >= 0)
+            {
+                body << ",\"team\":" << teamIndex;
+            }
+            if (!outToken.empty())
+            {
+                body << ",\"token\":\"" << outToken << "\"";
+            }
+            body << "}";
+
+
+            resp = make_http_response(body.str(), "application/json");
+        }
+    }
+
+
+    else
+    {
         resp = make_http_response("Valorant BO3 map veto server\n", "text/plain");
     }
 
