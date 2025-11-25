@@ -55,6 +55,7 @@ namespace pb {
         Team teams[2];
         std::vector<Map> availableMaps;
         std::vector<Step> steps;
+        std::string teamCaptainTokens[2];
 
         int deciderMapId = 0;
     };
