@@ -89,6 +89,8 @@ namespace pb
         m.steps = bo3_steps();
         m.deciderMapId = 0;
         m.lastUpdated = std::chrono::steady_clock::now();
+        m.teamCaptainTokens[TEAM_A].clear();
+        m.teamCaptainTokens[TEAM_B].clear();
 
         m.teams[TEAM_A].name = teamAName;
         m.teams[TEAM_B].name = teamBName;
