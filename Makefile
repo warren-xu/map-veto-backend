@@ -1,6 +1,9 @@
 # Compiler and flags
 CXX      := g++
-CXXFLAGS := -std=c++17 -Wall -Wextra -pedantic -Iinclude
+CXXFLAGS := -std=c++17 -Wall -Wextra -pedantic -Iinclude -pthread
+
+# Linker libs
+LIBS     := -lssl -lcrypto
 
 # Directories
 SRC_DIR  := src
@@ -21,7 +24,7 @@ all: $(TARGET)
 
 # Link
 $(TARGET): $(OBJS) | $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) $(OBJS) -o $@
+	$(CXX) $(CXXFLAGS) $(OBJS) -o $@ $(LIBS)
 
 # Compile each .cpp -> build/*.o
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp | $(OBJ_DIR)
