@@ -62,6 +62,9 @@ namespace pb {
         int deciderSide = -1;
 
         int deciderMapId = 0;
+
+        std::map<int, int> mapSides; // Key: MapID, Value: 0 (Attack) or 1 (Defend)
+        int currentSideMapId = 0;    // The ID of the map we are currently picking a side for
     };
     void init_state();
     Match& create_match(const std::string& teamAName, const std::string& teamBName, std::string series);
