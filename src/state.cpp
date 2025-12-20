@@ -47,8 +47,7 @@ namespace pb
             "public/mapimgs/haven.webp",
             "public/mapimgs/icebox.webp",
             "public/mapimgs/lotus.webp",
-            "public/mapimgs/split.webp"
-        };
+            "public/mapimgs/split.webp"};
         std::vector<Map> result;
         int id = 1;
         for (uint64_t i = 0; i < names.size(); ++i)
@@ -61,12 +60,12 @@ namespace pb
     static std::vector<Step> bo1_steps()
     {
         return {
-            {ActionType::Ban, TEAM_A}, // Team A Bans
-            {ActionType::Ban, TEAM_B}, // Team B Bans
-            {ActionType::Ban, TEAM_A}, // Team A Bans
-            {ActionType::Ban, TEAM_B}, // Team B Bans
-            {ActionType::Pick, TEAM_A}, // Team A Picks the Map
-            {ActionType::Side, TEAM_B}, // Team B Picks the Side
+            {ActionType::Ban, TEAM_A},  // Team A Bans
+            {ActionType::Ban, TEAM_B},  // Team B Bans
+            {ActionType::Ban, TEAM_A},  // Team A Bans
+            {ActionType::Ban, TEAM_A},  // Team B Bans
+            {ActionType::Pick, TEAM_B}, // Team A Picks the Map
+            {ActionType::Side, TEAM_A}, // Team B Picks the Side
         };
     }
 
@@ -75,17 +74,17 @@ namespace pb
         return {
             {ActionType::Ban, TEAM_A},
             {ActionType::Ban, TEAM_B},
-            
-            {ActionType::Pick, TEAM_A},  // Team A Picks Map 1
-            {ActionType::Side, TEAM_B},  // Team B Picks Side for Map 1
-            
-            {ActionType::Pick, TEAM_B},  // Team B Picks Map 2
-            {ActionType::Side, TEAM_A},  // Team A Picks Side for Map 2
-            
+
+            {ActionType::Pick, TEAM_A}, // Team A Picks Map 1
+            {ActionType::Side, TEAM_B}, // Team B Picks Side for Map 1
+
+            {ActionType::Pick, TEAM_B}, // Team B Picks Map 2
+            {ActionType::Side, TEAM_A}, // Team A Picks Side for Map 2
+
             {ActionType::Ban, TEAM_A},
             {ActionType::Ban, TEAM_B},
-            
-            {ActionType::Side, TEAM_A},  // Team A Picks Side for Decider map
+
+            {ActionType::Side, TEAM_A}, // Team A Picks Side for Decider map
         };
     }
 
@@ -126,6 +125,8 @@ namespace pb
         m.availableMaps = get_default_maps();
         m.steps = bo1_steps();
         m.deciderMapId = 0;
+        m.deciderSide = -1;
+        m.deciderSidePickerTeam = -1;
         m.seriesType = series;
         m.lastUpdated = std::chrono::steady_clock::now();
         m.teamCaptainTokens[TEAM_A].clear();
@@ -167,7 +168,7 @@ namespace pb
         }
 
         // Only check map availability if not picking a side
-        if (action != ActionType::Side) 
+        if (action != ActionType::Side)
         {
             if (!is_map_available(m, mapId))
             {
@@ -185,7 +186,8 @@ namespace pb
         }
         else if (action == ActionType::Side)
         {
-            m.deciderSide = mapId; 
+            m.deciderSide = mapId;
+            m.deciderSidePickerTeam = teamIndex;
         }
 
         // Advance to next step
@@ -197,11 +199,18 @@ namespace pb
             m.phase = Phase::Completed;
 
             // Logic for bo1: each side bans 2, team a picks the map
-            if (m.seriesType == "bo1") 
+            if (m.seriesType == "bo1")
             {
-                m.deciderMapId = m.teams[TEAM_A].pickedMapIds[0];
+                if (!m.teams[TEAM_B].pickedMapIds.empty())
+                {
+                    m.deciderMapId = m.teams[TEAM_B].pickedMapIds[0];
+                }
+                else
+                {
+                    m.deciderMapId = -1;
+                }
             }
-            else 
+            else
             {
                 // Logic for bo3 (banning until phase changes)
                 int remainingMapId = -1;
@@ -221,9 +230,12 @@ namespace pb
             m.currentTurnTeam = m.steps[m.currentStepIndex].teamIndex;
             // Set Phase Label based on next action
             ActionType nextAction = m.steps[m.currentStepIndex].action;
-            if (nextAction == ActionType::Pick) m.phase = Phase::PickPhase;
-            else if (nextAction == ActionType::Side) m.phase = Phase::SidePhase;
-            else m.phase = Phase::BanPhase;
+            if (nextAction == ActionType::Pick)
+                m.phase = Phase::PickPhase;
+            else if (nextAction == ActionType::Side)
+                m.phase = Phase::SidePhase;
+            else
+                m.phase = Phase::BanPhase;
         }
 
         m.lastUpdated = std::chrono::steady_clock::now();
@@ -245,7 +257,8 @@ namespace pb
         oss << "\"captainTaken\":["
             << (m.teamCaptainTokens[0].empty() ? false : true) << ","
             << (m.teamCaptainTokens[1].empty() ? false : true) << "],";
-        oss << "\"deciderSide\":" << m.deciderSide << ","; // Ensure 'deciderSide' is in your struct
+        oss << "\"deciderSide\":" << m.deciderSide << ",";
+        oss << "\"deciderSidePickerTeam\":" << m.deciderSidePickerTeam << ",";
         oss << "\"teams\":[";
         for (int i = 0; i < 2; ++i)
         {

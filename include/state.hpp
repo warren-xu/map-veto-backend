@@ -61,6 +61,7 @@ namespace pb {
         std::vector<Step> steps;
         std::string teamCaptainTokens[2];
         int deciderSide = -1;
+        int deciderSidePickerTeam = -1;
 
         int deciderMapId = 0;
 
