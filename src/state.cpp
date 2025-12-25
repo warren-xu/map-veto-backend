@@ -160,51 +160,39 @@ namespace pb
     bool apply_action(Match &m, int teamIndex, ActionType action, int mapId)
     {
         if (m.phase == Phase::Completed || m.currentStepIndex >= m.steps.size())
-        {
-            return false; // Match already completed
-        }
+            return false;
 
         const Step &currentStep = m.steps[m.currentStepIndex];
         if (currentStep.teamIndex != teamIndex || currentStep.action != action)
-        {
-            return false; // Not this team's turn or wrong action
-        }
+            return false;
 
         const auto stepIdx = m.currentStepIndex;
 
-        // Only check map availability if not picking a side
-        if (action != ActionType::Side)
-        {
-            if (!is_map_available(m, mapId))
-            {
-                return false; // Map already banned or picked
-            }
-        }
         if (action == ActionType::Ban)
         {
+            if (!is_map_available(m, mapId)) return false;
             m.teams[teamIndex].bannedMapIds.push_back(mapId);
             m.stepMapIds[stepIdx] = mapId;
         }
         else if (action == ActionType::Pick)
         {
+            if (!is_map_available(m, mapId)) return false;
             m.teams[teamIndex].pickedMapIds.push_back(mapId);
             m.currentSideMapId = mapId;
             m.stepMapIds[stepIdx] = mapId;
         }
         else if (action == ActionType::Side)
         {
-            // mapId parameter is actually the side in this case (CHANGE POST-MVP)
-            const int side = mapId;
-
-            if (m.currentSideMapId == 0)
-            {
-                int lastPicked = pb::UNASSIGNED_MAP_ID;
-                for (int t = 0; t < 2; ++t)
-                {
-                    if (!m.teams[t].pickedMapIds.empty())
-                        lastPicked = m.teams[t].pickedMapIds.back();
-                }
-                m.currentSideMapId = lastPicked;
+            const int side = mapId; // mapId arg is treated as side (0 or 1) here
+            // If this is the decider map (last step), record it specifically
+            if (m.seriesType == "bo1") {
+                 m.deciderSide = side;
+                 m.deciderSidePickerTeam = teamIndex;
+                 m.deciderMapId = m.currentSideMapId; 
+            }
+            else if (m.currentSideMapId == m.deciderMapId && m.deciderMapId != 0) {
+                 m.deciderSide = side;
+                 m.deciderSidePickerTeam = teamIndex;
             }
 
             // store side choice for that map
@@ -214,8 +202,6 @@ namespace pb
                 m.stepMapIds[stepIdx] = m.currentSideMapId;
                 m.stepSideVals[stepIdx] = side;
             }
-            m.deciderSide = mapId;
-            m.deciderSidePickerTeam = teamIndex;
         }
 
         // Advance to next step
@@ -225,49 +211,43 @@ namespace pb
         if (m.currentStepIndex >= m.steps.size())
         {
             m.phase = Phase::Completed;
-
+            
             // Logic for bo1: each side bans 2, team a picks the map
-            if (m.seriesType == "bo1")
-            {
-                if (!m.teams[TEAM_B].pickedMapIds.empty())
-                {
+            if (m.seriesType == "bo1" && m.deciderMapId == 0) {
+                 if (!m.teams[TEAM_B].pickedMapIds.empty()) {
                     m.deciderMapId = m.teams[TEAM_B].pickedMapIds[0];
                 }
-                else
-                {
-                    m.deciderMapId = -1;
-                }
-            }
-            else
-            {
-                // Logic for bo3 (banning until phase changes)
-                int remainingMapId = -1;
-                for (const auto &map : m.availableMaps)
-                {
-                    if (is_map_available(m, map.id))
-                    {
-                        remainingMapId = map.id;
-                        break;
-                    }
-                }
-                m.deciderMapId = remainingMapId;
             }
         }
         else
         {
-            m.currentTurnTeam = m.steps[m.currentStepIndex].teamIndex;
-            // Set Phase Label based on next action
-            ActionType nextAction = m.steps[m.currentStepIndex].action;
-            if (nextAction == ActionType::Pick)
+            const auto &nextStep = m.steps[m.currentStepIndex];
+            
+            m.currentTurnTeam = nextStep.teamIndex;
+
+            // calculate decider map if we are at the last step of bo3
+            if (m.seriesType == "bo3" && m.currentStepIndex == m.steps.size() - 1)
+            {
+                for (const auto &map : m.availableMaps)
+                {
+                    if (is_map_available(m, map.id))
+                    {
+                        m.deciderMapId = map.id;
+                        m.currentSideMapId = map.id;
+                        m.stepMapIds[m.currentStepIndex] = map.id;
+                        break;
+                    }
+                }
+            }
+            if (nextStep.action == ActionType::Pick)
                 m.phase = Phase::PickPhase;
-            else if (nextAction == ActionType::Side)
+            else if (nextStep.action == ActionType::Side)
                 m.phase = Phase::SidePhase;
             else
                 m.phase = Phase::BanPhase;
         }
 
         m.lastUpdated = std::chrono::steady_clock::now();
-
         return true;
     }
 
